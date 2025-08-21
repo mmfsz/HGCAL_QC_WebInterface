@@ -8,16 +8,18 @@ def connect(num):
     if(num==1):
         connection = mariadb.connect(
             host='localhost',
-            user ='',
-            password ='',
+            #user='writer',
+            user='testwriter',
+            password='writepass',
             database=get_db_name(),
             #cursorclass=mariadb.cursors.DictCursor
         )
     if(num==0):
         connection = mariadb.connect(
             host='localhost',
-            user='',
-            password='',
+            #user='reader',
+            user='testreader',
+            password='readpass',
             database=get_db_name(),
             #cursorclass=mariadb.cursors.DictCursor
         )
@@ -26,8 +28,10 @@ def connect(num):
 
 # for requiring an admin password to perform certain actions with the database
 def connect_admin(passwd):
-
-    if sha256(passwd.encode('utf-8')).hexdigest() == '':
+    
+    
+    #if sha256(passwd.encode('utf-8')).hexdigest() == '0af9a3439168759e823f14dd710145547a4a09542e90d0e365eff7bf28884f62':
+    if sha256(passwd.encode('utf-8')).hexdigest() == '713bfda78870bf9d1b261f565286f85e97ee614efe5f0faf7c34e7ca4f65baca':
         return connect(1)
     else:
         print("Failed to make DB connection. Wrong admin password")
@@ -36,11 +40,11 @@ def connect_admin(passwd):
 # holds the directory location
 def get_base_url():
     # TODO replace this with the web address for your directory
-    base = "http://cmslab1.spa.umn.edu/Factory/WagonDB/"
+    base = "http://localhost/Factory/WagonDB/"
     return base
 
 def get_db_name():
-    name = ''
+    name = 'mbdb'
     return name
 
 def get_image_location():
