@@ -429,9 +429,9 @@ def get_sn_from_lpgbt_id(lpgbt_id):
 
     QUERY = "SELECT full_id FROM Board INNER JOIN Test INNER JOIN Attachments ON Board.board_id=Test.board_id and Test.test_id=Attachments.test_id WHERE JSON_EXTRACT(Attachments.attach, '$.test_data.DAQ.id') = %s ORDER BY Test.test_id desc"
 
-    #lpgbt_id_int = str(int(lpgbt_id, 16))
+    lpgbt_id_int = str(int(lpgbt_id, 16)) if lpgbt_id.lower().startswith('0x') else lpgbt_id
 
-    cur.execute(QUERY % (lpgbt_id))
+    cur.execute(QUERY % (lpgbt_id_int,))
     full_id = cur.fetchall()
     if full_id:
         print(full_id[0][0])
