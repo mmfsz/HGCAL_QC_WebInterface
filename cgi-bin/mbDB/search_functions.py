@@ -37,9 +37,6 @@ AllData['Outcome'] = AllData['Outcome'].replace(1, 'Successful')
 AllData = AllData.merge(TestTypeData, on='Test Type ID', how='left')
 AttachData = pd.read_csv(mTD.get_attachments())
 AllData = AllData.merge(AttachData, on='Test ID', how='left')
-ComponentData = pd.read_csv(mTD.get_components())
-AllData = AllData.merge(ComponentData, on='Board ID', how='left')
-AllData['Chips Scanned'] = AllData['Chips Scanned'].fillna(0).astype(int)
 AllData.dropna()
 
 filter_code=('''
@@ -116,7 +113,7 @@ return indices;
 ''')
 
 def makeTable(ds, widgets, view):
-    td = ColumnDataSource({'Sub Type':[], 'Full ID':[], 'Person Name':[], 'Test Type':[], 'Date':[], 'Outcome':[], 'Raw Time':[], 'Location':[], 'Attachment':[], 'Chips Scanned':[]})
+    td = ColumnDataSource({'Sub Type':[], 'Full ID':[], 'Person Name':[], 'Test Type':[], 'Date':[], 'Outcome':[], 'Raw Time':[], 'Location':[], 'Attachment':[]})
 
     x = CustomJS(args=dict(td=td, data=ds, view=view),code='''
 const type_ids=[];
@@ -128,7 +125,6 @@ const outcomes=[];
 const raw_time=[];
 const locations=[];
 const attachments=[];
-const chips_scanned=[];
 
 const indices = view.filters[0].compute_indices(data);
 let mask = new Array(data.data['Full ID'].length).fill(false);
@@ -155,7 +151,6 @@ for (let j = 0; j < data.get_length(); j++) {
         outcomes.push(data.data['Outcome'][j])
         locations.push(data.data['Location'][j])
         attachments.push(data.data['Attach ID'][j])
-        chips_scanned.push(data.data['Chips Scanned'][j])
     }
 }
 td.data['Sub Type'] = type_ids;
@@ -167,7 +162,6 @@ td.data['Outcome'] = outcomes;
 td.data['Raw Time'] = raw_time;
 td.data['Location'] = locations;
 td.data['Attachment'] = attachments;
-td.data['Chips Scanned'] = chips_scanned;
 td.change.emit()
 ''')
 
@@ -256,19 +250,6 @@ Attach
 '''
     board = HTMLTemplateFormatter(template=module_template)
 
-    # green pill when the board's chip IDs have been scanned at the photograph
-    # station (Board_component), grey dash when nothing has been scanned yet
-    scan_template = '''
-<div style="font-size: 130%">
-<% if (value > 0) { %>
-<span class="badge bg-success rounded-pill">&#10003; <%= value %></span>
-<% } else { %>
-<span class="badge bg-secondary rounded-pill">&mdash;</span>
-<% } %>
-</div>
-'''
-    scan_badge = HTMLTemplateFormatter(template=scan_template)
-
     table_columns = [
                     TableColumn(field='Sub Type', title='Sub Type', formatter=bigger_font),
                     TableColumn(field='Full ID', title='Full ID', formatter=board),
@@ -278,7 +259,6 @@ Attach
                     TableColumn(field='Raw Time', title='Raw Time', formatter=bigger_font),
                     TableColumn(field='Location', title='Location', formatter=bigger_font),
                     TableColumn(field='Outcome', title='Outcome', formatter=bigger_font),
-                    TableColumn(field='Chips Scanned', title='Chips Scanned', formatter=scan_badge),
                     TableColumn(field='Attachment', title='Attachment', formatter=link),
                     ]
 

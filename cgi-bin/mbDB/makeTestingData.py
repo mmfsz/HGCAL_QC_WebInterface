@@ -98,21 +98,6 @@ def get_attachments():
 
     return csv_file
 
-def get_components():
-    # per-board summary of chip IDs scanned at the photograph station (Board_component)
-    csv_file = io.StringIO()
-
-    columns = ['Board ID', 'Chips Scanned', 'Last Scanned']
-    writer = csv.writer(csv_file)
-    writer.writerow(columns)
-
-    cur.execute('select board_id, count(*), max(captured_date) from Board_component group by board_id')
-    writer.writerows(cur.fetchall())
-
-    csv_file.seek(0)
-
-    return csv_file
-
 def get_check_in():
     csv_file = io.StringIO()
 
