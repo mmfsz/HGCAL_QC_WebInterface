@@ -32,6 +32,9 @@ module_functions.add_test_tab(serial_num, board_id)
 # adds info table and images
 module_functions.board_info(serial_num)
 
+# lists chip IDs scanned in at the photograph station
+module_functions.board_components(serial_num)
+
 # gets all test types
 cur.execute('select test_type, name from Test_Type order by relative_order ASC')
 test_types = cur.fetchall()

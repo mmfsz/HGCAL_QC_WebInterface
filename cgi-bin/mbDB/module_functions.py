@@ -337,13 +337,55 @@ def board_info(sn):
     print('</tbody>')
     print('</table>')
 
-    try:
-        print('<h5>Top View:</h5>') 
-        print('<img src="get_image.py?board_id=%s&view=%s" width=900 height=auto>' % (board_id, 'Top'))
-        print('<h5>Bottom View:</h5>')
-        print('<img src="get_image.py?board_id=%s&view=%s" width=900 height=auto>' % (board_id, 'Bottom'))
-    except Exception as e:
-        print('<h6>This board has no images.</h6>')
+    # photograph-station board photos: only render an <img> when a photo of that
+    # view actually exists, otherwise show a placeholder instead of a broken image
+    any_image = False
+    for view in ('Top', 'Bottom'):
+        cur.execute('select image_name from Board_images where board_id=%s and view="%s" order by date desc' % (board_id, view))
+        if cur.fetchall():
+            any_image = True
+            print('<h5>%s View:</h5>' % view)
+            print('<img src="get_image.py?board_id=%s&view=%s" width=900 height=auto>' % (board_id, view))
+    if not any_image:
+        print('<h6>This board has no photograph-station images yet.</h6>')
+
+
+def board_components(sn):
+    # lists the chip IDs scanned in for this board at the photograph station
+    cur.execute('select board_id from Board where full_id="%s"' % sn)
+    board_id = cur.fetchall()[0][0]
+
+    cur.execute('select ref_designator, kind, child_serial, captured_date from Board_component where board_id=%s order by kind, ref_designator' % board_id)
+    components = cur.fetchall()
+
+    print('<div class="col-md-11 pt-2 px-4 mx-2 my-2">')
+    if components:
+        print('<h4>Photograph Station &mdash; Scanned Chip IDs '
+              '<span class="badge bg-success rounded-pill">%d</span></h4>' % len(components))
+        print('<table class="table table-bordered table-hover table-active">')
+        print('<thead><tr>')
+        print('<th>Ref. Designator</th>')
+        print('<th>Kind</th>')
+        print('<th>Chip / Component ID</th>')
+        print('<th>Scanned</th>')
+        print('</tr></thead>')
+        print('<tbody>')
+        for ref_designator, kind, child_serial, captured_date in components:
+            when = captured_date.strftime('%c') if captured_date else ''
+            print('<tr>')
+            print('<td>%s</td>' % html.escape(str(ref_designator)))
+            print('<td>%s</td>' % html.escape(str(kind)))
+            print('<td><code>%s</code></td>' % html.escape(str(child_serial)))
+            print('<td>%s</td>' % html.escape(when))
+            print('</tr>')
+        print('</tbody>')
+        print('</table>')
+    else:
+        print('<h4>Photograph Station &mdash; Scanned Chip IDs '
+              '<span class="badge bg-secondary rounded-pill">0</span></h4>')
+        print('<p class="text-muted">No chip IDs have been scanned in for this board '
+              'at the photograph station yet.</p>')
+    print('</div>')
 
 
 def add_board_info(board_id, sn, info, passwd):

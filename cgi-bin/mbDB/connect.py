@@ -48,7 +48,10 @@ def get_db_name():
     return name
 
 def get_image_location():
-    # TODO add absolute path to image directory here
-    fp = "/path/to/images/"
+    # Absolute path to the directory holding photograph-station board images.
+    # The photograph station (Testing GUI) must deposit image files here, and the
+    # web upload form (add_board_image) writes here as well. Must end with a slash.
+    # NOTE: update this to match wherever the photograph station writes on this host.
+    fp = "/home/user/HGCAL_QC_WebInterface/board_photos/"
     return fp
 
