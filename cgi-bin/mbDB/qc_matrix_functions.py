@@ -7,6 +7,7 @@
 # attachment (same source used by get_sn_from_lpgbt_id).
 
 import html
+import json
 from connect import connect
 
 db = connect(0)
@@ -15,6 +16,7 @@ cur = db.cursor(buffered=True)
 # glyph, css class, and legend tooltip for each cell state
 GLYPH = {
     'pass':    ('✓', 'pass',    'Passed (passed at least once)'),
+    'masked':  ('✓', 'masked',  'Passed with masked errors (warm-QC grade yellow)'),
     'fail':    ('✕', 'fail',    'Failed every attempt'),
     'missing': ('○', 'missing', 'Never run (but in this board type’s test set)'),
     'na':      ('·', 'na',      'Not part of this board type’s test set'),
@@ -33,7 +35,7 @@ def _gather():
     for full_id, board_id, type_sn, nickname, bt_type_id in cur.fetchall():
         boards[board_id] = {'full_id': full_id, 'board_id': board_id, 'subtype': type_sn,
                             'nickname': nickname, 'bt_type_id': bt_type_id,
-                            'econ': {}, 'ldo': {}, 'lpgbt': None, 'status': {}}
+                            'econ': {}, 'ldo': {}, 'lpgbt': None, 'status': {}, 'masked': {}}
 
     # which tests apply to which board type
     cur.execute('select type_id, test_type_id from Type_test_stitch')
@@ -42,13 +44,29 @@ def _gather():
         stitch.setdefault(type_id, set()).add(tt)
 
     # full test history -> ever-passed / ever-attempted per (board, test type)
-    cur.execute('select board_id, test_type_id, successful from Test')
+    cur.execute('select board_id, test_type_id, successful, test_id from Test')
     agg = {}
-    for board_id, tt, successful in cur.fetchall():
-        d = agg.setdefault((board_id, tt), {'pass': False, 'any': False})
+    for board_id, tt, successful, test_id in cur.fetchall():
+        d = agg.setdefault((board_id, tt), {'pass': False, 'any': False, 'last': 0})
         d['any'] = True
+        d['last'] = max(d['last'], test_id)
         if successful == 1:
             d['pass'] = True
+
+    # warm-QC grade (lab619_testing tools/qc_grade, append-only Test_grade): latest row per (board, test).
+    # Used only while it covers the newest run of that test; a test run since the last regrade shows raw.
+    grades = {}
+    cur.execute("show tables like 'Test_grade'")
+    if cur.fetchall():  # absent on instances without the grader
+        cur.execute('''select g.board_id, g.test_type_id, g.grade, g.last_test_id, g.masked, g.mask_version
+                       from Test_grade g join (select max(grade_id) m from Test_grade
+                       where test_type_id is not null group by board_id, test_type_id) x on g.grade_id = x.m''')
+        for board_id, tt, grade, last_tid, masked, mver in cur.fetchall():
+            try:
+                items = ', '.join(str(i) for i in json.loads(masked or '[]'))
+            except ValueError:
+                items = str(masked)
+            grades[(board_id, tt)] = (grade, last_tid, items, mver)
 
     # ECON / LDO serials scanned at the photograph station
     cur.execute('select board_id, ref_designator, kind, child_serial from Board_component')
@@ -81,6 +99,9 @@ def _gather():
             d = agg.get((bid, tt))
             if d is None:
                 b['status'][tt] = 'missing' if tt in appl else 'na'
+            elif grades.get((bid, tt), ('',))[0] == 'yellow' and grades[(bid, tt)][1] == d['last']:
+                b['status'][tt] = 'masked'
+                b['masked'][tt] = 'mask file v%s; masked: %s' % (grades[(bid, tt)][3] or '?', grades[(bid, tt)][2] or '—')
             elif d['pass']:
                 b['status'][tt] = 'pass'
             elif d['any']:
@@ -116,7 +137,7 @@ def _chip_cell(dm):
 STYLE = '''
 <style>
 .qcm{--pass:#1f9d57;--pass-bg:#e6f4ec;--fail:#d1435b;--fail-bg:#fbe7ec;
-  --miss:#aab2c0;--miss-ring:#c2c9d6;--na:#ccd3de;--accent:#2f6db0;--accent-soft:#e7f0f9;
+  --mask:#a07800;--mask-bg:#fdf3cf;--miss:#aab2c0;--miss-ring:#c2c9d6;--na:#ccd3de;--accent:#2f6db0;--accent-soft:#e7f0f9;
   --ink:#1a2230;--ink-soft:#586374;--ink-faint:#8a94a4;--border:#dde2ea;--border-strong:#c6ccd8;
   --surface:#fff;--surface-2:#f7f9fb;
   --mono:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
@@ -128,11 +149,12 @@ STYLE = '''
 .qcm-stat{background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:.5rem .9rem;min-width:96px}
 .qcm-stat .num{font-size:1.35rem;font-weight:650;font-variant-numeric:tabular-nums;line-height:1}
 .qcm-stat .lbl{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-soft);margin-top:.28rem}
-.qcm-stat.p .num{color:var(--pass)} .qcm-stat.f .num{color:var(--fail)} .qcm-stat.m .num{color:var(--ink-soft)}
+.qcm-stat.p .num{color:var(--pass)} .qcm-stat.y .num{color:var(--mask)} .qcm-stat.f .num{color:var(--fail)} .qcm-stat.m .num{color:var(--ink-soft)}
 .qcm-legend{display:flex;flex-wrap:wrap;gap:1.1rem;align-items:center;margin:.3rem 0 1rem;font-size:.83rem;color:var(--ink-soft)}
 .qcm-legend .item{display:inline-flex;align-items:center;gap:.4rem}
 .qcm .gl{width:1.35em;height:1.35em;display:inline-grid;place-items:center;border-radius:5px;font-weight:700}
 .qcm .gl.pass{color:var(--pass);background:var(--pass-bg)}
+.qcm .gl.masked{color:var(--mask);background:var(--mask-bg)}
 .qcm .gl.fail{color:var(--fail);background:var(--fail-bg)}
 .qcm .gl.missing{color:var(--miss);border:1px solid var(--miss-ring)}
 .qcm .gl.na{color:var(--na)}
@@ -167,6 +189,8 @@ STYLE = '''
 .qcm td.cell{text-align:center;font-weight:700;font-size:.95rem;border-right:1px solid var(--border);padding:.2rem 0;cursor:default}
 .qcm td.cell.pass{color:var(--pass);background:var(--pass-bg)}
 .qcm td.cell.fail{color:var(--fail);background:var(--fail-bg)}
+.qcm td.cell.masked{color:var(--mask);background:var(--mask-bg)}
+.qcm tbody tr:hover td.cell.masked{background:var(--mask-bg)}
 .qcm td.cell.missing{color:var(--miss)}
 .qcm td.cell.na{color:var(--na)}
 .qcm tbody tr:hover td{background:var(--surface-2)}
@@ -184,7 +208,7 @@ STYLE = '''
 def render_matrix():
     test_types, boards = _gather()
 
-    tally = {'pass': 0, 'fail': 0, 'missing': 0, 'na': 0}
+    tally = {'pass': 0, 'masked': 0, 'fail': 0, 'missing': 0, 'na': 0}
     for b in boards:
         for v in b['status'].values():
             tally[v] = tally.get(v, 0) + 1
@@ -212,6 +236,7 @@ def render_matrix():
     print('<div class="qcm-stats">')
     print('<div class="qcm-stat"><div class="num">%d</div><div class="lbl">Boards</div></div>' % len(boards))
     print('<div class="qcm-stat p"><div class="num">%d</div><div class="lbl">Passed</div></div>' % tally['pass'])
+    print('<div class="qcm-stat y"><div class="num">%d</div><div class="lbl">Masked errors</div></div>' % tally['masked'])
     print('<div class="qcm-stat f"><div class="num">%d</div><div class="lbl">Failed (all attempts)</div></div>' % tally['fail'])
     print('<div class="qcm-stat m"><div class="num">%d</div><div class="lbl">Not yet run</div></div>' % tally['missing'])
     print('<div class="qcm-stat"><div class="num">%d</div><div class="lbl">Chip-scanned</div></div>' % n_scanned)
@@ -220,6 +245,7 @@ def render_matrix():
 
     print('<div class="qcm-legend">')
     print('<span class="item"><span class="gl pass">✓</span> passed (ever)</span>')
+    print('<span class="item"><span class="gl masked">✓</span> passed with masked errors (warm-QC grade)</span>')
     print('<span class="item"><span class="gl fail">✕</span> failed every attempt</span>')
     print('<span class="item"><span class="gl missing">○</span> not yet run</span>')
     print('<span class="item"><span class="gl na">·</span> not in this board type’s test set</span>')
@@ -246,7 +272,7 @@ def render_matrix():
                  len(grp), '' if len(grp) == 1 else 's'))
         for b in grp:
             appl = sum(1 for t in test_types if b['status'].get(t['id']) != 'na')
-            passed = sum(1 for t in test_types if b['status'].get(t['id']) == 'pass')
+            passed = sum(1 for t in test_types if b['status'].get(t['id']) in ('pass', 'masked'))
             pct = (100 * passed // appl) if appl else 0
             print('<tr>')
             print('<th class="idcell"><a href="module.py?full_id=%s" target="_blank" title="%s">%s</a></th>'
@@ -259,6 +285,8 @@ def render_matrix():
             for t in test_types:
                 st = b['status'].get(t['id'], 'na')
                 g, cls, tip = GLYPH[st]
+                if st == 'masked':
+                    tip = '%s (%s)' % (tip, b['masked'][t['id']])
                 print('<td class="cell %s" title="%s — %s">%s</td>'
                       % (cls, html.escape(t['name']), html.escape(tip), g))
             print('</tr>')
