@@ -2,7 +2,7 @@
 
 # Builds the QC Status Matrix: every board x every test type, where a test counts as
 # passed if the board cleared it at least once, failed only if every attempt failed, and
-# not-yet-run if it was never tried. ECON / LDO chip IDs come from the photograph station
+# not-yet-run if it was never tried. ECON-T / ECON-D / LDO chip IDs come from the photograph station
 # (Board_component); the lpGBT ID is recovered from each board's most recent test-data
 # attachment (same source used by get_sn_from_lpgbt_id).
 
@@ -35,7 +35,7 @@ def _gather():
     for full_id, board_id, type_sn, nickname, bt_type_id in cur.fetchall():
         boards[board_id] = {'full_id': full_id, 'board_id': board_id, 'subtype': type_sn,
                             'nickname': nickname, 'bt_type_id': bt_type_id,
-                            'econ': {}, 'ldo': {}, 'lpgbt': None, 'status': {}, 'masked': {}}
+                            'econ': {}, 'econd': {}, 'ldo': {}, 'lpgbt': None, 'status': {}, 'masked': {}}
 
     # which tests apply to which board type
     cur.execute('select type_id, test_type_id from Type_test_stitch')
@@ -76,6 +76,8 @@ def _gather():
             continue
         if kind == 'IC-ECT':
             b['econ'][ref] = serial
+        elif kind == 'IC-ECD':  # ECON-D U201; many carry no S/N (capture app writes nothing for those)
+            b['econd'][ref] = serial
         elif kind == 'IC-LDO':
             b['ldo'][ref] = serial
 
@@ -212,7 +214,7 @@ def render_matrix():
     for b in boards:
         for v in b['status'].values():
             tally[v] = tally.get(v, 0) + 1
-    n_scanned = sum(1 for b in boards if b['econ'] or b['ldo'])
+    n_scanned = sum(1 for b in boards if b['econ'] or b['econd'] or b['ldo'])
     n_lpgbt = sum(1 for b in boards if b['lpgbt'])
 
     # group boards by (subtype, nickname); biggest groups first
@@ -220,7 +222,7 @@ def render_matrix():
     for b in boards:
         groups.setdefault((b['subtype'], b['nickname']), []).append(b)
     gkeys = sorted(groups.keys(), key=lambda k: (-len(groups[k]), k[0]))
-    span = 5 + len(test_types)  # id + econ + ldo + lpgbt + prog + one per test
+    span = 6 + len(test_types)  # id + econ-t + econ-d + ldo + lpgbt + prog + one per test
 
     print(STYLE)
     print('<div class="qcm">')
@@ -230,7 +232,7 @@ def render_matrix():
     print('<p class="lede">Every board and every test on the stand. A test counts as '
           '<strong>passed</strong> if the board cleared it at least once, '
           '<strong>failed</strong> only if every attempt failed, and '
-          '<strong>not&nbsp;yet&nbsp;run</strong> if it was never tried. ECON, LDO and '
+          '<strong>not&nbsp;yet&nbsp;run</strong> if it was never tried. ECON-T, ECON-D, LDO and '
           'lpGBT IDs are shown where recorded.</p>')
 
     print('<div class="qcm-stats">')
@@ -254,7 +256,8 @@ def render_matrix():
     print('<div class="qcm-wrap"><table>')
     print('<thead><tr>')
     print('<th class="corner">Board / Full ID</th>')
-    print('<th class="chiph">ECON IDs<br><span style="font-weight:400;text-transform:none">U251_T1 / _T2</span></th>')
+    print('<th class="chiph">ECON-T IDs<br><span style="font-weight:400;text-transform:none">U251_T1 / _T2</span></th>')
+    print('<th class="chiph">ECON-D ID<br><span style="font-weight:400;text-transform:none">U201</span></th>')
     print('<th class="chiph">LDO IDs<br><span style="font-weight:400;text-transform:none">U661 / U681</span></th>')
     print('<th class="chiph">lpGBT ID</th>')
     print('<th class="progh">Passed</th>')
@@ -278,6 +281,7 @@ def render_matrix():
             print('<th class="idcell"><a href="module.py?full_id=%s" target="_blank" title="%s">%s</a></th>'
                   % (html.escape(b['full_id']), html.escape(b['full_id']), html.escape(b['full_id'])))
             print('<td class="chip">%s</td>' % _chip_cell(b['econ']))
+            print('<td class="chip">%s</td>' % _chip_cell(b['econd']))
             print('<td class="chip">%s</td>' % _chip_cell(b['ldo']))
             print('<td class="chip lpgbt">%s</td>' % _fmt_lpgbt(b['lpgbt']))
             print('<td class="prog"><div class="bar"><span style="width:%d%%"></span></div>'
@@ -296,7 +300,7 @@ def render_matrix():
           'Ordering follows each test’s relative order on the stand (number above the label). '
           '&ldquo;Not in this board type’s test set&rdquo; (from <code>Type_test_stitch</code>) '
           'is distinct from an applicable test that simply hasn’t been run yet. lpGBT IDs are '
-          'read from the most recent test-data attachment; ECON / LDO serials come from the '
+          'read from the most recent test-data attachment; ECON-T / ECON-D / LDO serials come from the '
           'photograph station (<code>Board_component</code>). Pass/fail reflects the full test '
           'history, not only the latest attempt.</p>')
 
