@@ -272,6 +272,9 @@ def add_module(serial_number, manu, location):
         db = connect(1)
         cur = db.cursor()
         
+        # board IDs are stored upper case (full_id and the type_id cut from it); scanners/typing may send lower case
+        serial_number = serial_number.strip().upper()
+
         # grabs correct sections of the full id to add it to the database
         if len(serial_number) == 15:
             sn = serial_number[9:15]
