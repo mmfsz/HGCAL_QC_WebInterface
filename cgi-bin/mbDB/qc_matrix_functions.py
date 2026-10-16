@@ -6,6 +6,7 @@
 # (Board_component); the lpGBT ID is recovered from each board's most recent test-data
 # attachment (same source used by get_sn_from_lpgbt_id).
 
+import datetime
 import html
 import json
 from connect import connect
@@ -111,7 +112,20 @@ def _gather():
             else:
                 b['status'][tt] = 'missing'
 
-    board_list = sorted(boards.values(), key=lambda x: (x['subtype'], x['full_id']))
+    # last update per board: newest test (future-dated rows ignored), check-in or chip scan
+    for q in ('select board_id, max(day) from Test where day <= now() group by board_id',
+              'select board_id, max(checkin_date) from Check_In group by board_id',
+              'select board_id, max(captured_date) from Board_component group by board_id'):
+        cur.execute(q)
+        for board_id, t in cur.fetchall():
+            b = boards.get(board_id)
+            if b is not None and t is not None and (b.get('last') is None or t > b['last']):
+                b['last'] = t
+
+    # within a subtype: most recently updated first; boards with no activity last
+    board_list = sorted(boards.values(), key=lambda x: x['full_id'])
+    board_list.sort(key=lambda x: x.get('last') or datetime.datetime.min, reverse=True)
+    board_list.sort(key=lambda x: x['subtype'])
     return test_types, board_list
 
 
@@ -278,8 +292,10 @@ def render_matrix():
             passed = sum(1 for t in test_types if b['status'].get(t['id']) in ('pass', 'masked'))
             pct = (100 * passed // appl) if appl else 0
             print('<tr>')
+            last = b.get('last')
+            tip = b['full_id'] + (' · last update ' + last.strftime('%Y-%m-%d %H:%M') if last else '')
             print('<th class="idcell"><a href="module.py?full_id=%s" target="_blank" title="%s">%s</a></th>'
-                  % (html.escape(b['full_id']), html.escape(b['full_id']), html.escape(b['full_id'])))
+                  % (html.escape(b['full_id']), html.escape(tip), html.escape(b['full_id'])))
             print('<td class="chip">%s</td>' % _chip_cell(b['econ']))
             print('<td class="chip">%s</td>' % _chip_cell(b['econd']))
             print('<td class="chip">%s</td>' % _chip_cell(b['ldo']))
